@@ -38,4 +38,39 @@ using the included serial console cable (and an old Gateway Profile 6, which is 
 ### Understanding the ISP's Networking
 
 So before configuring the router, we first need to understand a little bit about how things are set up for the ISP.
-There is a great write-up [available here](https://github.com/MonkWho/pfatt)
+There is a great write-up [available here](https://github.com/MonkWho/pfatt).
+
+The short version of this is that there are two pieces that have to be taken into consideration by the router. One is the
+fact that authentication to the network is done via EAPoL (Otherwise called IEEE 802.1x), and the other is the fact that
+traffic bound for the ONT requires an 802.1q VLAN ID to be set to 0 (Sometimes seen as Cisco priority frames).
+
+Both of these can be handled by the use of the `netgraph` functions in the FreeBSD kernel. This allows for the creation
+of a graph-based description of the virtual networking devices, and filtering and routing at the packet level.
+
+In essence, we are actually creating a Man-In-The-Middle attack between the 5268AC and the ONT. This is because we require
+the certificates that are present in the ROM of the 5268AC to be presented to the authenticator on the other end of the
+optical network. Once the EAP Authenticator sets the port status to `Authorized`, normal traffic (including host
+configuration) should be passed to FreeBSD by a virtual network interface. This can then be used by the routing
+processes as the destination for outbound traffic from the LAN.
+
+So the first order of business is to consider the cabling of the devices. This requires three physical interfaces,
+although I used a fourth one for a separate LAN segment for multicast IPTV set top boxes. 
+
+In this case, the ONT is connected via Ethernet to interface `em0` on the device, and the 5268AC's ONT Broadband port is connected to `em2`.
+The primary LAN segment is connected to `em1`, and the IPTV set top boxes are connected by a switch connected to `em3`. Pardon the terrible ASCII diagram.
+
+```
+----------     ----------  ---------    --------   
+| 5268AC |     |   ONT  |  |  LAN  |    | IPTV |
+----------     ----------  ---------    --------
+   | ONT            |      |             |
+   |                |      |             |
+   |---------[em2] [em0] [em1] [em3]------
+```
+
+The other piece of information we need to get started is the MAC address of the ONT interface on the 5268AC. Since that's
+on the data plate of every single router, we have what we need to get started.
+
+### Packet Routing For Fun
+
+Coming soon will be the actual fun of the ins and outs of the netgraph setup. Stay tuned.
