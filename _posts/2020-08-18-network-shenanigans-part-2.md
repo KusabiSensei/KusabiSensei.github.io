@@ -71,6 +71,61 @@ The primary LAN segment is connected to `em1`, and the IPTV set top boxes are co
 The other piece of information we need to get started is the MAC address of the ONT interface on the 5268AC. Since that's
 on the data plate of every single router, we have what we need to get started.
 
+If you want to be really fancy, and you have the certificates from your gateway available, then you can do the 802.1x
+authentication yourself, and you wouldn't need to have the gateway remain connected. I, however, am not that fancy.
+
 ### Packet Routing For Fun
 
-Coming soon will be the actual fun of the ins and outs of the netgraph setup. Stay tuned.
+So now we have to set up the netgraph in the FreeBSD kernel. Fortunately in the latest versions, netgraph is already
+loaded in the kernel, so there's no additional kernel level work to do. In addition, thanks to the hard work of many
+individuals already, there is a script that is able to do almost all the heavy lifting. 
+
+In short, this script is configured to run at the start of boot, using an `<earlyshellcmd>` in the `config.xml` file.
+This creates the netgraph, which bridges the correct interfaces together. In addition, it sets up the filters for EAP
+traffic to route to the correct interfaces, along with setting the netgraph's virtual interface's MAC address to be the
+gateway's ethernet address.
+
+Once this happens, then we are able to take `ngeth0` and use that as the WAN interface of the router.
+
+### IPv4 and IPv6
+
+So once the EAPoL packets from the residential gateway are bridged over to the ONT, and the responses come back, then
+standard traffic is able to pass. DHCPv4 is, of course, supported, and that's fairly straightforward. Simply map out
+the RFC 1918 addresses for your local LAN, and off you roll.
+
+IPv6 is a bit more of a challenge, and it will depend on your provider and their configuration. In my case, the provider
+provides a site-local address via DHCPv6 and also will delegate a prefix for subnets to be assigned by the router. This
+requires that the DHCP Unique Identifer be set appropriately. The provider works best with the DUID set to EN mode, the
+IANA Enterprise Number set to `3561` and the identifier set to a value that can be calculated from the serial number of
+the residential gateway [using this script](https://github.com/MonkWho/pfatt/blob/master/bin/gen-duid.sh).
+
+The prefix delegation request needs to have the netmask of the requested prefix set to `/60`. This gets the assigned
+prefixes, and allows you to then configure the router to assign `/64`s to different interfaces. Given that a standard
+IPv6 subnet is a `/64` and contains 18,446,744,073,709,551,616 addresses, I don't see you running out any time soon.
+
+### IPTV and Multicast
+
+My provider, in addition to data service, also provides TV service over IPv4 Multicast. The method by which this happens
+is a bit strange, but it is [well-documented here](https://github.com/MonkWho/pfatt/blob/master/U-VERSE_TV.md).
+
+First, the box requests a unicast stream from the headend. While it starts playing the unicast stream, it makes an IGMPv2
+membership request to the multicast version of the same stream. Then after about 10 seconds, it will seamlessly transition
+from the unicast stream to the multicast stream, which saves on bandwidth, especially in the case where multiple set top
+boxes are tuned to the same channel.
+
+This requires that the firewall be set to allow traffic to the multicast networks between any interface. This is done
+through the use of a floating firewall rule. In addition, it's necessary for your router to support proxying IGMP traffic,
+so that subscription requests and such can be made of the headend to send multicast traffic to the box.
+
+### Results
+
+So far, the small box has done well for itself with no major issues cropping up. Granted, I haven't used IPSec or OpenVPN
+with it yet, but we'll see how it does once we get there.
+
+I accomplished the following major things with this small project:
+* I increased packet routing performance
+* I'm using equipment that I have root level access over
+* I've closed down all ports from the WAN interface, including those that are open on the residential gateway by default
+
+Next time, I'll get into how I've deployed DNS, since I have my own domain name (naturally...that's where you're reading this).
+I'll also take a look at encrypting management traffic on various devices using certbot and Let's Encrypt.
